@@ -1,123 +1,240 @@
 [TOC]
 
-## 1、WebSocket 协议概述
+## 1、HTTPS有什么用
 
-WebSocket 协议主要为了解决基于 HTTP/1.x 的 Web 应用无法实现服务端向客户端主动推送的问题, 为了兼容现有的设施, WebSocket 协议使用与 HTTP 协议相同的端口, 并使用 HTTP Upgrade 机制来进行 WebSocket 握手, 当握手完成之后, 通信双方便可以按照 WebSocket 协议的方式进行交互
+如果你对HTTPS了解不深，可能会觉得上了HTTPS就是把 http://变成 https://，然后有把小锁头在浏览器地址栏上。这看起来似乎可有可无。但是我们在申请 HTTPS 证书的时候却比较麻烦，除了要定时续签之外，有的证书还需要支付一定的费用。那么，我们到底加上 HTTPS 有什么作用呢？我总结了两点：
 
-WebSocket 使用 TCP 作为传输层协议, 与 HTTP 类似, WebSocket 也支持在 TCP 上层引入 TLS 层, 以建立加密数据传输通道, 即 WebSocket over TLS, WebSocket 的 URI 与 HTTP URI 的结构类似, 对于使用 80 端口的 WebSocket over TCP, 其 URI 的一般形式为 ws://host:port/path/query 对于使用 443 端口的 WebSocket over TLS, 其 URI 的一般形式为 wss://host:port/path/query
+1. 加密传输数据，确保客户端和服务器之间传输的数据不被中间人窃取、篡改。
+2. 验证你访问的网站确实是该网站的控制人所发布的。
 
-在 WebSocket 协议中, 帧 (frame) 是通信双方数据传输的基本单元, 与其它网络协议相同, frame 由 Header 和 Payload 两部分构成, frame 有多种类型, frame 的类型由其头部的 Opcode 字段 (将在下面讨论) 来指示, WebSocket 的 frame 可以分为两类, 一类是用于传输控制信息的 frame (如通知对方关闭 WebSocket 连接), 一类是用于传输应用数据的 frame, 使用 WebSocket 协议通信的双方都需要首先进行握手, 只有当握手成功之后才开始使用 frame 传输数据
-## 2、WebSocket 握手
-当客户端想要使用 WebSocket 协议与服务端进行通信时, 首先需要确定服务端是否支持 WebSocket 协议, 因此 WebSocket 协议的第一步是进行握手, WebSocket 握手采用 HTTP Upgrade 机制, 客户端可以发送如下所示的结构发起握手 (请注意 WebSocket 握手只允许使用 HTTP GET 方法):
+
+第一点我相信比较好理解，我们电脑连接服务器的过程中，可能会受到很多中间人的监控，比如你在学校上网可能受到学校网关的监控，你在公共WIFI上网可能被黑客监控，你在国内上网可能受到一些众所周知的监控等等，如果你访问 HTTP 协议的网站，那么不好意思，你所看到的所有网站内容，你发给服务器的密码，中间人都可以全部看到，甚至还可以篡改。所以，我们需要对客户端和服务端之间的传输数据进行加密，从而使中间人无法得知传输的真实内容。
+
+而第二点，是非常重要的，但是很多人可能没有意识到有什么用。当我们的 DNS 不可靠的时候，我们访问 http://www.baidu.com 可能会被错误指向一个恶意的IP，里面也是仿照百度的内容，但是嵌入了病毒，但是我们完全不知道，还以为是百度自己干的。但是有了 HTTPS ，我们访问 https://www.baidu.com ，看到浏览器网址栏锁，那么我们就可以确信，这个网页的所有内容，都是域名的控制人，百度公司提供的。
+
+
+![](images/https-1.png)
+
+对于第二点，可能你还没有直观的印象，你可以在本地的 hosts 中添加
 ```
-GET /chat HTTP/1.1
-Host: server.example.com
-Upgrade: websocket
-Connection: Upgrade
-Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
-Origin: http://example.com
-Sec-WebSocket-Protocol: chat, superchat
-Sec-WebSocket-Version: 13
+127.0.0.1 www.baidu.com
 ```
-在 HTTP Header 中设置 Upgrade 字段, 其字段值为 websocket, 并在 Connection 字段指示 Upgrade, 服务端若支持 WebSocket 协议, 并同意握手, 可以返回如下所示的结构:
+把百度指向你的本机，然后你启动一个服务器软件，模拟 DNS 被人篡改的情况。现在，访问 http://www.baidu.com ，你可以看到百度的内容就成功被你篡改了。
+
+但是，你访问 https://www.baidu.com ，则发现，你如果不修改系统的设置，你永远也不可能在浏览器地址栏中看到那个小锁，并且会提示：不安全，原因很简单，你不是 www.baidu.com 域名的控制人。所以 HTTPS 起到验证网站是否是域名控制人所有的作用。
+
+![](images/https-2.png)
+
+对于第二点，还有一种情况，叫中间人攻击
+
+![](images/https-3.png)
+
+而 HTTPS 也可以防止这种情况发生。
+
+那么，HTTPS 能否识别恶意网站呢？答案是不能的，恶意网站也可以申请 HTTPS，并且有地址栏锁，所以这个安全不等于网站本身是安全，只是说能确保网站确实是网站的域名的控制人发布的，而没有被第三方中途篡改、监听。如果黑客黑进了网站的服务器，那么这个时候 HTTPS 同样也有小锁，因为这个时候网站仍然是在网站域名的控制人的服务器上面。
+
+
+## 2、一个脑洞大开的 HTTPS 系统
+
+我们先假设，我们不懂什么密码学知识，要实现上面两个功能，脑洞大开一下，我们应该怎么设计呢？
+
+首先，我规定好一种“加密”的方法，假设我们的网页只有英文，那么就把整个网页的所有的字母都位移 n 位，然后解密的时候，位移回来就可以了。
+
+![](images/https-4.svg)
+
+
+现在，我们还要验证网站的内容是否是域名控制人提供的，那么我们还需要：
+![](images/https-5.svg)
+
+
+也许看到这里你已经笑（ma）了（ren），因为我实现的系统根本都在做掩耳盗铃的把戏。
+1. 加密算法和位移量 n 是公开传输的，那么中间人可以截取，从而解密之后的数据
+2. 服务器声称他的身份，这个没有任何约束，假冒服务器也可以声称他是 乱码有限公司
+3. 每次访问都要连接第三方鉴定机构，访问网站的速度很慢。
+
+
+## 3、真实的 HTTPS
+
+首先，我先介绍 HTTPS 里面用到的加密方法，和 hash 摘要方法，如果你已经了解，可以跳过。
+
+### 3.1 对称加密
+
+对称加密很好理解，就是只有一个密码，你可以用这个密码加密一段文本，也可以用这个密码解密刚刚加密的文本。比如：
+你用 WinRAR 创建一个带密码的加密压缩包。当你下次要把这个压缩文件解开的时候，你需要输入【同样的】密码。
+常见的对称加密算法有 DES
+
+
+### 3.2 非对称加密
+
+非对称加密是两个密码，分别叫公钥和私钥，非对称加密有个很神奇的特点：公钥加密的，只能用私钥解密，私钥加密的，只能用公钥解密。
+
+我们在 http://web.chacuo.net/netrsakeypair 可以用一种非对称加密的算法：RSA，随机生成一对这样的密钥：
+
+公钥：
 ```
-HTTP/1.1 101 Switching Protocols
-Upgrade: websocket
-Connection: Upgrade
-Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
-Sec-WebSocket-Protocol: chat
-Sec-WebSocket-Version: 13
+-----BEGIN PUBLIC KEY-----
+MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAND5ps7FJHtP6ssE6g1l92FR1cFTDjZ9
+JbdLHuRFB5mzKswOj7FpGVHErKA1wHmoxG9qHV70KxIBewYzqOrxWKcCAwEAAQ==
+-----END PUBLIC KEY-----
 ```
-我们来详细讨论 WebSocket 的握手细节, 客户端发起握手时除了设置 Upgrade 之外, 还需要设置其它的 Header 字段
-
-| Sec-WebSocket-Key |, 必传, 由客户端随机生成的 16 字节值, 然后做 base64 编码, 客户端需要保证该值是足够随机, 不可被预测的 (换句话说, 客户端应使用熵足够大的随机数发生器), 在 WebSocket 协议中, 该头部字段必传, 若客户端发起握手时缺失该字段, 则无法完成握手
-| Sec-WebSocket-Version |, 必传, 指示 WebSocket 协议的版本, RFC 6455 的协议版本为 13, 在 RFC 6455 的 Draft 阶段已经有针对相应的 WebSocket 实现, 它们当时使用更低的版本号, 若客户端同时支持多个 WebSocket 协议版本, 可以在该字段中以逗号分隔传递支持的版本列表 (按期望使用的程序降序排列), 服务端可从中选取一个支持的协议版本
-| Sec-WebSocket-Protocol |, 可选, 客户端发起握手的时候可以在头部设置该字段, 该字段的值是一系列客户端希望在于服务端交互时使用的子协议 (subprotocol), 多个子协议之间用逗号分隔, 按客户端期望的顺序降序排列, 服务端可以根据客户端提供的子协议列表选择一个或多个子协议
-| Sec-WebSocket-Extensions |, 可选, 客户端在 WebSocket 握手阶段可以在头部设置该字段指示自己希望使用的 WebSocket 协议拓展
-服务端若支持 WebSocket 协议, 并同意与客户端握手, 则应返回 101 的 HTTP 状态码, 表示同意协议升级, 同时应设置 Upgrade 字段并将值设置为 websocket, 并将 Connection 字段的值设置为 Upgrade, 这些都是与标准 HTTP Upgrade 机制完全相同的, 除了这些以外, 服务端还应设置与 WebSocket 相关的头部字段:
-
-| Sec-WebSocket-Accept |, 必传, 客户端发起握手时通过 | Sec-WebSocket-Key | 字段传递了一个将随机生成的 16 字节做 base64 编码后的字符串, 服务端若接收握手, 则应将该值与 WebSocket 魔数 (Magic Number) "258EAFA5-E914-47DA- 95CA-C5AB0DC85B11" 进行字符串连接, 将得到的字符串做 SHA-1 哈希, 将得到的哈希值再做 base64 编码, 最终的值便是该字段的值, 举例来说, 假设客户端传递的 Sec-WebSocket-Key 为 "dGhlIHNhbXBsZSBub25jZQ==", 服务端应首先将该字符串与 WebSocket 魔数进行字符串拼接, 得到 "dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA- C5AB0DC85B11", 然后对该字符串做 SHA-1 哈希运算得到哈希值 0xb3 0x7a 0x4f 0x2c 0xc0 0x62 0x4f 0x16 0x90 0xf6 0x46 0x06 0xcf 0x38 0x59 0x45 0xb2 0xbe 0xc4 0xea, 然后对该哈希值做 base64 编码, 最终得到 Sec-WebSocket-Accept 的值为 s3pPLMBiTxaQ9kYGzzhZRbK+xOo=, 当客户端收到服务端的握手响应后, 会做同样的运算来校验该值是否符合预期, 以便于判断服务端是否真的支持 WebSocket 协议, 设置这个环节的目的就是为了最终校验服务端对 WebSocket 协议的支持性, 因为单纯使用 Upgrade 机制, 对于一些没有正确实现 HTTP Upgrade 机制的 Web Server, 可能也会返回预期的 Upgrade, 但实际上它并不支持 WebSocket, 而引入 WebSocket 魔数并进行这一系列操作后可以很大程度上确定服务端确实支持 WebSocket 协议
-| Sec-WebSocket-Protocol |, 可选, 若客户端在握手时传递了希望使用的 WebSocket 子协议, 则服务端可在客户端传递的子协议列表中选择其中支持的一个, 服务端也可以不设置该字段表示不希望或不支持客户端传递的任何一个 WebSocket 子协议
-| Sec-WebSocket-Extensions |, 可选, 与 Sec-WebSocket-Protocol 字段类似, 若客户端传递了拓展列表, 可服务端可从中选择其中一个做为该字段的值, 若服务端不支持或不希望使用这些扩展, 则不设置该字段
-| Sec-WebSocket-Version |, 必传, 服务端从客户端传递的支持的 WebSocket 协议版本中选择其中一个, 若客户端传递的所有 WebSocket 协议版本对服务端来说都不支持, 则服务端应立即终止握手, 并返回 HTTP 426 状态码, 同时在 Header 中设置 | Sec-WebSocket-Version | 字段向客户端指示自己所支持的 WebSocket 协议版本列表
-服务端若接收客户端的握手, 便按上述所表述的规则向客户端返回握手响应, 客户端对服务端返回的握手响应做校验, 若校验成功, 则 WebSocket 握手成功, 之后双方就可以开始进行双向的数据传输。客户端在发起握手后必须处于阻塞状态, 换句话说, 客户端必须等待服务端发回响应之后才允许开始数据传递, 客户端对服务端的握手响应的校验机制如下:
-
-客户端应首先检查服务端返回的状态码是否为 101, 只有在 HTTP 状态码为 101 时才代表服务端同意了协议升级, 对于其它类型的状态码, 客户端应根据 HTTP 状态码的语义做相应的处理
-客户端应检查服务端返回的响应是否包含 Upgrade 字段, 若缺失, 代表 Upgrade 未成功, 客户端应终止 WebSocket 握手
-客户端应检查 Upgrade 字段的值是否为 websocket (该字段是大小写不敏感的, 如 websocket, WebSocket, webSocket 等都是合法的), 若不是, 客户端应终止 WebSocket 握手
-客户端应采用如上所表述的方式校验服务端返回的 Sec-WebSocket-Accept 字段的值是否合法, 若该字段不存在或值不符合预期, 则客户端应终止 WebSocket 握手
-若服务端返回的 Header 中包含 Sec-WebSocket-Extensions, 但其字段的值并不在客户端最初向服务端发起握手时传递的 Sec-WebSocket-Extensions 的值列表中, 则客户端应终止 WebSocket 握手
-若服务端返回的 Header 中包含 Sec-WebSocket-Protocol, 但该字段的值并不在客户端最初向服务端发起握手时传递的 Sec-WebSocket-Protocol 的值列表中, 则客户端应终止 WebSocket 握手
-若客户端校验服务端的握手响应通过, 则 WebSocket 握手阶段完成, 接下来双方就可以进行 WebSocket 的双向数据传输了
-
-## 3、WebSocket 数据帧 (frame)
-WebSocket 以 frame 为单位传输数据, frame 是客户端和服务端数据传输的最小单元, 当一条消息过长时, 通信方可以将该消息拆分成多个 frame 发送, 接收方收到以后重新拼接、解码从而还原出完整的消息, 在 WebSocket 中, frame 有多种类型, frame 的类型由 frame 头部的 Opcode 字段指示, WebSocket frame 的结构如下所示:
-
-![](images/proto.jpg)
-
-
-该结构的字段语义如下:
-
-FIN, 长度为 1 比特, 该标志位用于指示当前的 frame 是消息的最后一个分段, 因为 WebSocket 支持将长消息切分为若干个 frame 发送, 切分以后, 除了最后一个 frame, 前面的 frame 的 FIN 字段都为 0, 最后一个 frame 的 FIN 字段为 1, 当然, 若消息没有分段, 那么一个 frame 便包含了完成的消息, 此时其 FIN 字段值为 1
-RSV 1 ~ 3, 这三个字段为保留字段, 只有在 WebSocket 扩展时用, 若不启用扩展, 则该三个字段应置为 1, 若接收方收到 RSV 1 ~ 3 不全为 0 的 frame, 并且双方没有协商使用 WebSocket 协议扩展, 则接收方应立即终止 WebSocket 连接
-Opcode, 长度为 4 比特, 该字段将指示 frame 的类型, RFC 6455 定义的 Opcode 共有如下几种:
-0x0, 代表当前是一个 continuation frame
-0x1, 代表当前是一个 text frame
-0x2, 代表当前是一个 binary frame
-0x3 ~ 7, 目前保留, 以后将用作更多的非控制类 frame
-0x8, 代表当前是一个 connection close, 用于关闭 WebSocket 连接
-0x9, 代表当前是一个 ping frame (将在下面讨论)
-0xA, 代表当前是一个 pong frame (将在下面讨论)
-0xB ~ F, 目前保留, 以后将用作更多的控制类 frame
-
-
-Mask, 长度为 1 比特, 该字段是一个标志位, 用于指示 frame 的数据 (Payload) 是否使用掩码掩盖, RFC 6455 规定当且仅当由客户端向服务端发送的 frame, 需要使用掩码覆盖, 掩码覆盖主要为了解决代理缓存污染攻击 (更多细节见 RFC 6455 Section 10.3)
-Payload Len, 以字节为单位指示 frame Payload 的长度, 该字段的长度可变, 可能为 7 比特, 也可能为 7 + 16 比特, 也可能为 7 + 64 比特. 具体来说, 当 Payload 的实际长度在 [0, 125] 时, 则 Payload Len 字段的长度为 7 比特, 它的值直接代表了 Payload 的实际长度; 当 Payload 的实际长度为 126 时, 则 Payload Len 后跟随的 16 位将被解释为 16-bit 的无符号整数, 该整数的值指示 Payload 的实际长度; 当 Payload 的实际长度为 127 时, 其后的 64 比特将被解释为 64-bit 的无符号整数, 该整数的值指示 Payload 的实际长度
-Masking-key, 该字段为可选字段, 当 Mask 标志位为 1 时, 代表这是一个掩码覆盖的 frame, 此时 Masking-key 字段存在, 其长度为 32 位, RFC 6455 规定所有由客户端发往服务端的 frame 都必须使用掩码覆盖, 即对于所有由客户端发往服务端的 frame, 该字段都必须存在, 该字段的值是由客户端使用熵值足够大的随机数发生器生成, 关于掩码覆盖, 将下面讨论, 若 Mask 标识位 0, 则 frame 中将设置该字段 (注意是不设置该字段, 而不仅仅是不给该字段赋值)
-Payload, 该字段的长度是任意的, 该字段即为 frame 的数据部分, 若通信双方协商使用了 WebSocket 扩展, 则该扩展数据 (Extension data) 也将存放在此处, 扩展数据 + 应用数据, 它们的长度和便为 Payload Len 字段指示的值
-
-
-## 4、WebSocket 掩码算法
-RFC 6455 规定所有由客户端发往服务端的 WebSocket frame 的 Payload 部分都必须使用掩码覆盖, 这是为了避免代理缓存污染攻击 (更多细节见 RFC 6455 Section 10.3), 若服务端接收到没有使用掩码覆盖的 frame, 服务端应立即终止 WebSocket 连接, 掩码覆盖只针对 frame 的 Payload 部分, 掩码覆盖不会改变 Payload 的长度, 掩码覆盖的算法如下:
-
-客户端使用熵值足够高的随机数生成器随机生成 32 比特的 Masking-Key
-以字节为步长遍历 Payload, 对于 Payload 的第 i 个字节, 首先做 i MOD 4 得到 j, 则掩码覆盖后的 Payload 的第 i 个字节的值为原先 Payload 第 i 个字节与 Masking-Key 的第 j 个字节做按位异或操作
-我们以 original-octet-i 表示未覆盖前的 Payload 的第 i 个字节, 以 transformed-octet-i 表示覆盖后的 Payload 的第 i 个字节, 以 masking-key-octet-j 表示 Masking-Key 的第 j 个字节, 那么上述算法的操作可以用如下两个式子表示:
+私钥：
 ```
-j                   = i MOD 4
+-----BEGIN PRIVATE KEY-----
+MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEA0PmmzsUke0/qywTq
+DWX3YVHVwVMONn0lt0se5EUHmbMqzA6PsWkZUcSsoDXAeajEb2odXvQrEgF7BjOo
+6vFYpwIDAQABAkBDIyG7Jk0NLOSy6tZDDbJHWuJApO1ZBiXa2FCJZ8AEWZ2xQJbi
+GxatFcIL8lC0kayueRtCNQDXQRnsGslG8bqJAiEA8YkyBzOue03aO+EM/Dfj7JX6
+ZGIUEArFg+wbe+iZBF0CIQDdfUrb5BGKveORtl05I6W55p5zlR9kA23mCnZETvHA
+0wIgdtEFsjNDPtbiZxhjWeNolOaGYUE6G1YhKa9JKeAW/eUCIDpHKVdKX0M+S46f
+iU/rjUOo5rBK4IOUU2pf/lZi30F5AiEAz5v9XcTtk6OuNBOb8fjLhyg3FJ1BJoLT
+7OsqePL3Q1g=
+-----END PRIVATE KEY-----
 ```
-transformed-octet-i = original-octet-i XOR masking-key-octet-j
-服务端收到客户端的 frame 后, 首先检查 Mask 标志位是否为 1, 若不是则应立即终止握手, 然后根据 Masking-Key 字段的值重复上述操作便可以得到原先的 Payload 数据
+现在，我们有待加密的文本：
+好好学习，天天向上
 
-## 5、WebSocket 消息分片
-当要发送的一条消息过长或者消息是实时产生并不能预测具体的长度时, 客户端可将消息进行分片, 构成一个 frame 后便可以发往服务端, 分片的另一个考虑是为了复用底层的 TCP 连接, 当客户端有多份相互独立的数据需要发送时, 消息分片可以实现在一条 TCP 链路上的复用, 多份数据可以并发地发往服务端, 如果读者了解过 HTTP/2 [RFC 7540] 便可以知道这里也是 HTTP/2 的做法, 但 RFC 6455 并没有具体指出如何实现 WebSocket 分片消息的并发传送, 在 HTTP/2 中, 并发传送是通过 Stream 来关联的, 根据 Stream Identifier, 接收方可以知晓哪些消息是逻辑上连续的消息, 在 WebSocket 中, 若不引进额外机制, 则并发传送时服务端无法区分哪些消息段在逻辑上是同属于一个消息的, 这里需要通过额外的 WebSocket 扩展机制实现, 此处不深入讨论, 下面所讨论的分片场景都是在不并发传送的前提假设下的
+用公钥加密的结果：
+```
+UvrUthcLQk5aDFGaKlblMZuIR4goomvrKebRpkUftvpXvjKBLYvJiZiRTiyB2s6Bb5ugNEmnjd21aZboJ2moew==
+```
+以上的密文只能用私钥来解密。
+同样，私钥加密的密文，只能用公钥来解密。
 
-消息分片主要利用 frame Header 的 FIN 和 Opcode 字段来实现, 对于未分片的消息, 一个 frame 便承载了完整的消息, 此时它没有后续的 frame, 因此其 FIN 字段为 1, Opcode 根据该消息是文本消息还是二进制消息分别选择 0x1 或 0x2, 而对于分片的消息, 我们以文本消息为例, 文本消息的 Opcode 为 0x1, 若不进行分片, 则 frame 的 FIN 字段为 1, 同时 Opcode 字段为 0x1, 若进行分片, 则第一个分片的 frame 的 FIN 字段为 0, Opcode 为 0x1, 但从第二个直到倒数第二个分片, 其 FIN 字段为 0, 并且 Opcode 字段的值为 0x0 (0x0 代表这是一个 continuation frame), 对于最后一个分片的消息, 其 FIN 字段为 1, 并且 Opcode 字段的值为 0x1, 对于分片消息, 发送端必须按序发送, 因此 TCP 保证交付给上层的数据是有序的, 因此接收端也将按发送端发送的顺序收到消息, 它可以按序拼接分片得到完整的消息
+那么，这种加密算法的意义是什么呢？
+1. 如果一段密文可以用公钥解密，证明这段密文是由掌握者私钥的人加密的，而掌握私钥的人通常是服务端。这是验证的功能。
+2. 一段文字用公钥加密后，只有持有私钥的人才能解密，掌握私钥的人通常是服务端。这是加密的功能。
 
-控制类的 frame (如 Ping frame, Pong frame, 将下面讨论) 可以被允许插入在分片消息的发送过程中, 如果不允许, 则对于过长的消息, 其分片数很多, 发送耗时比较长, 控制类的消息需要一直等待消息发送完成而不能及时传递给对方, 将会产生一系列问题 (将在下面讨论)
 
-## 6、WebSocket 控制类 frame
-控制类 frame 主要用来传输一些连接控制信息 (如 Close frame 用来关闭 WebSocket 连接), RFC 6455 总共定义了三种控制类 frame, 分别是 Close frame, Ping frame, Pong frame
+### 3.3 Hash 摘要方法
+也称为消息摘要算法。可以将任意长度的文本转换为较短的固定长度的二进制值，并且源文本一旦修改，那么它们的 hash 是不一样的，日常生活中，我们常常碰见的 MD5，SHA1 都是 hash 算法。
 
-Close frame
-Close frame, 顾名思义, 用来关闭 WebSocket 连接, 当需要关闭 WebSocket 连接时, 通信方向对方发送 Close frame, frame 可以包含 Payload, 如果包含, 则 Payload 的前两个字节以小端字节序表示的 16 位整数指示了相应的错误码, 在其后以 ASCII 编码只是一个错误原因, 这个错误原因不需要具有可读性, 一般用来做调试信息用, 当使用 WebSocket 通信的任何一方收到 Close frame 后, 应继续向对方返回一个 Close frame, 通常需要将错误码回显给对方, 当接收到 Close frame 并向对方发回 Close frame 后, 通信方便可以认为 WebSocket 连接已关闭, 此时应关闭底层的 TCP 连接
-Ping frame
-Ping frame 是作为一个探测性的 frame, 主要用来实现 WebSocket 层 Keep-Alive, 或者用来探测对方是否仍然是可回复的状态, Ping frame 可以包含 Payload
-Pong frame
-Pong frame 一方面作为 Ping frame 的响应, 接收方接收到 Ping frame 后应立即发回 Pong frame, 并且 Payload 的内容需要和 Ping frame 相同, 若接收方接收到了多个 Ping frame, 还没来得及回复 Pong frame, 则只需对最后一个 Ping frame 做出回复即可, 另一方面, Pong frame 可以由通信方主动发出, 作为一种心跳包
+我们可以把一个很长的的文件，进行 hash 算法，他永远也只会输出固定长度，这非常节省空间，又确保了源文件没有在传输或者复制的时候被调包。
 
-## 7、WebSocket 挥手
-RFC 6455 将连接关闭表述为 Closing Handshake, 我更倾向于将其表述为挥手, 以便与建立连接的握手区分开, WebSocket 的连接关闭分为 CLOSING 和 CLOSED 两个阶段, 当发送完 Close frame 或接收到对方发来的 Close frame 后, WebSocket 连接便从 OPEN 状态转变为 CLOSING 状态, 此时可以称挥手已启动, 通信方接收到 Close frame 后应立即向对方发回 Close frame, 并关闭底层 TCP 连接, 此时 WebSocket 连接处于 CLOSED 状态
+比如，Windows 10 1803 的官方镜像：cn_windows_10_business_edition_version_1803_updated_aug_2018_x64_dvd_57e5b984.iso 足足有 4.86 GB 大，但是他的 SHA1值只有那么长：
+```
+533a5c7a732aefc7025f2128ffe0a4f0e5b0ed46
+```
+证书、签名和第三方机构
 
-## 8、WebSocket 控制类 frame
+首先，HTTPS 要验证，你访问的网站确实是该网站的控制人所发布的。
 
-与 HTTP 不同, WebSocket 在进行数据传输的时候正常情况下都以 frame 为传输单元, 不像 HTTP 协议那样每一次交互都有 Status Code, WebSocket 本身也有状态码, 但只用在 Close frame 中, 用于指示连接关闭的原因 (可能是正常关闭也可能是因为发生了错误)
+这要用到我们上面提到的非对称加密一个非常核心的功能：验证功能。
 
-RFC 6455 定义了多个 WebSocket 状态码:
+博主博客的域名是 luan.ma ，我自己持有私钥和公钥（可以直接随机生成），我把一串字符（网页）加密之后，把公钥和密文发布给任何人（包括你），任何人通过这个公钥解密，如果能成功解密，并且这个公钥确实是我发给你的，那么说明，这个密文确实是我发出的，而没有被中间人调包，因为，全世界只有我持有这一套配对的公钥和私钥。
 
-1000, 代表连接正常关闭
-1001, 代表通信方已断开 (Going AWAY), 例如服务端关机或客户端关闭网页
-1002, 代表通信方因 protocol error 关闭连接
+那么，关键的问题是，如何确定这个公钥的是不是真的是我发出的呢？我们需要一个第三方机构 ：数字证书管理机构 （Certificate Authority ）简称 CA 来证明。
 
-## 9、总结
-WebSocket 协议主要为了解决 HTTP/1.x 缺少双向通信机制的问题, 它使用 TCP 作为传输层协议, 使用 HTTP Upgrade 机制来握手, WebSocket 使用与 HTTP 相同的 80 (WebSocket over TCP) 和 443 (WebSocket over TLS) 端口, 它与 HTTP 是相互独立的协议, 二者没有上下的分层关系, 了解更详细的 WebSocket 细节可以阅读 RFC 6455
+我会向一个非常有公信力的 CA 申请，把我域名、个人资料和公钥提交给CA，CA确认 luan.ma 域名是我的（通过DNS验证），并且确认我的信息是真实的。之后，CA会把  我的信息 和 我的公钥 制作成一个 证书，然后用 CA 自己的私钥加密（CA手里也有一对公钥和私钥），附上CA自己的名字。然后让我取回CA签发的证书。最大的CA公司是 DigiCert，常见的可以签发免费证书的CA有 诚信亚洲，let's encrypt 等。
+
+证书可以公开发布，除了域名、网站主信息、CA名称外，还有有效期，附加域名（加钱），公司名（加钱）等信息：
+
+下面是百度的证书的主域名、颁发的CA、网站主信息、公钥、可用域名。
+
+![](images/https-6.png)
+![](images/https-7.png)
+![](images/https-8.png)
+![](images/https-9.png)
+![](images/https-.png)
+
+
+那么，这个证书被做出来之后，我再把证书和他的密文发给你，你先用CA的公钥解密证书（如果证书不是CA私钥加密的，无法用公钥解密），解密后看到我的公钥（这个公钥是我的这一点，由CA公证、担保），然后如果我的公钥可以解密密文，那么就说明，这个密文是我自己发出来的，而不是别人。
+
+那么，聪明的你也会问了，CA的公钥要怎么获取呢？要不要从CA的网站上面下载呢？我怎么知道CA的公钥到底是不是CA的呢？这好像变成了鸡生蛋，蛋生鸡的问题，
+
+不过，解决这个问题其实很简单，也很笨，因为 CA 的个数是有限的，所以，只要CA和浏览器厂商和操作系统搞好关系，叫他们把公钥预装在系统或者浏览器里面，就没有问题了。当A出示一个证书之后，按照证书上面 CA 的名字，就可以获取到对应CA的公钥了。通常，CA的公钥也在一个CA自己给自己做的证书里面，叫做根证书。所以，这里有个 Bug，根证书的真实性由浏览器和操作系统担保的，如果你的浏览器是不可信的（比如某些国产浏览器）或者你从奇怪的网站上面下载了操作系统安装文件，那么里面的公钥可能会被别有用心的人修改，那么你整个电脑的HTTPS体系就不再可靠了。
+
+![](images/https-11.png)
+
+这里还有几个小问题。第一个，证书的内容里面有A的信息和A的公钥，可能内容比较长，如果我们用私钥加密所有信息，那么整张证书的体积可能会变得非常大，在SSL诞生初期的二十多年前，这可能是网络不能容忍的。那么，我们要怎么优化呢？答案就是，我们对证书的正文部分不加密，而是对正文做一个 Hash 信息摘要，变成一个很短的字符串，成为指纹，然后只用私钥加密 Hash 这部分，称为签名，放入证书正文的后面。验证的时候，用CA的公钥解密 Hash，然后重新计算一次正文的 Hash，两相比对，即可知道证书的真伪。（关于指纹机制为什么存在，这只是我个人的观点）。
+
+图：百度证书的Hash指纹的算法是sha256，Hash 指纹是d6aa..
+![](images/https-12.png)
+![](images/https-13.png)
+
+第二个小问题，旧CA的根证书可能在许多老系统中都已经存在了，比如XP电脑。假设我现在想自己建一个CA，怎么办呢？难不成我还得跟这么浏览器厂商、系统厂商一个一个谈判吗？即使谈判成功，那旧电脑和旧浏览器也不会再更新了，难不成我CA做生意还要等到100年后XP全部淘汰才行？有三个解决办法：
+
+1. 如果只是在自己的地盘当CA，只需要把你的地盘的所有电脑都导入这个CA的根证书即可（反面教材：12306旧版要求公众下载自己的CA的根证书，新版已经全部换成公认CA的）。
+2. 如果你要当世界都公认的CA，并且已经和主流浏览器和操作系统厂商谈判好之后，可以把新证书通过 OSCP 在线同步到世界各地的电脑中（OSCP也可以用于第一种，在你的地盘同步）。
+3. 如果你没有能力完成上面的谈判的话，那么最好的方法是找现有的CA公司，花钱当小弟，让CA公司给你签发一张二级根证书证明你的公钥可靠，然后你再用你的私钥给别人签发证书。给别人签发证书的时候，要把自己的二级根证书和用户证书做成一张绑定证书。用户校验的时候先通过系统中的一级根证书的公钥校验二级根证书的有效性，再用二级根证书的公钥校验用户证书的有效性。这个称为证书链机制。
+
+图：证书链机制：Let's Encrypt 是二级 CA
+![](images/https-14.png)
+
+第三个小问题，凭什么他们就能当CA，我们就只能当小弟呢？CA一般是由有良好信用历史的公司担任，CA最重要的工作，也是底线，就是要验证申请证书这个人是不是他本人，或者说，给这个网站申请证书的人，到底是不是这个网站的域名控制人（这可以通过DNS添加TXT记录验证）。如果公认CA未经域名持有人同意就私自签发了某网站的证书，并且被人发现的话，那后果是非常严重的，会被浏览器或操作系统通过 OSCP 把 该CA 的根证书 加入 证书吊销列表 (Certificate Revocation List ，简称： CRL)，那么这个CA就没得玩了，只能认个大哥把自己变成二级CA，或者停止业务。CA烈士墙有：CNNIC，沃通， 赛门铁克。另外一方面，如果，如果CA私自签发还没被发现的话，这里面也存在着巨大的利益，完全有可能被政府或者别的机构利用。Windows系统有61家CA的根证书被信任，只要有其中一家 CA 未经验证就给黑客签发了一个证书，就可以把中间人由黑的变成白的。
+
+图：曾经的一级CA沃通，现在沦为二级CA：
+
+![](images/https-15.png)
+
+第四个小问题，怎么样给CA充钱变得更强？大家可以去CA的网站参观，比如：https://www.trustasia.com/
+EV SSL （Extended Validation） （证书： 适用于中大型企业网站，验证域名和公司，地址栏显示公司名称。1-5个工作日完成申请，验证域名和公司，地址栏显示公司名称。比如CA自己的网站会用，装B用，非常贵。
+OV SSL （Organization Validation）证书： 适用于中小企业网站，验证域名和公司，证书内显示公司信息。1-5个工作日完成申请，验证域名和公司，可提高网站可信度。大部分企业网站会用，比如百度、Google、QQ等均使用OV证书，比较贵。
+DV SSL （Domain Validation） 证书：只验证域名，小网站和个人网站可用，10分钟内可以通过。有免费的。
+还有加域名通配符，加额外域名等加钱套餐。
+
+第五个小问题，证书有效期最长可以签多长？为什么？2018年3月1日起，所有公开信任的SSL证书，最长有效期缩短为2年(825天)，建议网站所有者提前做好相应准备。新规由国际标准组织CAB Forum在2017年第193号投票通过。缩短有效期的最重要原因是，你的公司可能倒闭了，域名可能过期了，被接盘侠注册了，但是你还持有这个域名的证书，这是不合理，也不安全的，所以一般证书有效期都为一年，而较为宽松的 Let's encrypt 证书的有效期只有三个月。
+
+## 4、HTTPS连接
+
+讲了这么多废话，现在终于进入正题，HTTPS是怎么连接的呢？
+
+加密传输这个问题很好解决，因为我们有了对称加密算法，只需要服务端和浏览器同时知道密码，就可以进行稳定的加密传输了。
+
+现在主要问题变成，在第一次连接时，如何在中间人监听的情况下，服务端和浏览器协商出两个人都知道，中间人不知道的密码，并且浏览器对服务端进行身份确认，这就要用到 非对称加密 的算法，用 RSA 或者 DH - RSA 进行密钥协商，也叫 HTTPS 握手，这是 HTTPS 的重点。
+
+
+### 4.1 RSA握手
+
+第一步，浏览器给出协议版本号、一个客户端生成的带时间戳随机数（Client random），以及一个 seesion-id 本次会话 id，以及客户端支持的加密方法。
+
+第二步，服务器确认双方使用的加密方法，并给出数字证书（内含公钥）、以及一个服务器生成的带时间戳随机数（Server random）。
+
+第三步，浏览器确认数字证书有效（先用电脑的CA的公钥解密指纹是否有效，见证书验证过程），保存服务器随机数。然后生成一个新的随机数（Premaster secret），并使用数字证书中的公钥，加密这个随机数，发给浏览器。
+
+第四步，服务器使用自己的私钥，解密浏览器发来的随机数（即Premaster secret）。
+
+第五步，浏览器和服务器根据约定的加密方法，使用前面的三个随机数，生成"对话密钥"（session key），用来加密接下来的整个对话过程。（之后用 seesion key 进行对称机密）
+
+这里的 Client random 和 Server random 可以防止重放攻击，即可以防止黑客截取了密文，仿造用户和数据包直接多次发送给服务器，服务器如果没有这些随机数验证之前是否已经生成过 seesion key，那么很可能被黑客利用。比如说，仿造用户多次下单等。
+
+![](images/https-16.png)
+![](images/https-17.png)
+
+
+单纯RSA有个致命的问题，因为公钥和私钥一经生成，就一般不会再修改，如果你的私钥被泄露，那么我通过截取你的握手时候的数据，就可以得到你的 Seesion Key，从而破解你的加密内容。
+
+
+
+### 4.2 DH-RSA握手
+
+这种密钥协商的方法比上面的 RSA 更安全，步骤如下：
+
+1. 客户端先连上服务端，发送协议版本号，一个临时带时间戳随机数 和 本次会话 id
+2. 服务端生成一个随机数 s 作为自己的私钥，然后指定 DH 算法参数 (p, g)，并计算出临时公钥 S= g^s % p
+3. 服务端把证书，发给浏览器
+4. 服务端把 DH 算法的算法参数 (p, g)，临时公钥S，服务器临时随机数 ，经过摘要签名后，发给浏览器
+5. 浏览器验证证书有效，验证上面的数据有效，通过服务器的公钥，提取 DH 算法参数 (p, g) 和 临时公钥 S （防篡改）
+6. 浏览器生成一个随机数 c 作为自己的私钥，然后计算出临时公钥 C = g^c % p
+7. 浏览器把 C 发送给服务端
+8. 客户端和服务端根据 DH 算法 （S^c % P == C ^ s % P）各自计算出相同的 seesion-key 作为会话密钥
+
+p,q的选择
+1. p 必须是质数且足够大（至少300位）
+2. s，c 也要足够大（至少100位），且必须是随机生成。
+3. g 必须是质数，【不】需要很大，比如 2 或 3 或 5 都可以。
+这样，即使中间人可以截取任何数据，但是因为无法倒推出私钥（求解“离散对数问题”难解），无法求解出最终结果。从而巧妙的提高了安全性。
+
+
+![](images/https-18.png)
+
+
+一般现实实现中，使用的是基于以上算法改进的 ECDHE-RSA 算法
+
+
+## 5、断开重连
+
+握手阶段用来建立SSL连接。如果出于某种原因，对话中断，就需要重新握手。
+
+每一次对话都有一个编号（session ID）。如果对话中断，下次重连的时候，只要客户端给出这个编号，且服务器有这个编号的记录，双方就可以重新使用已有的"对话密钥"，而不必重新生成一把。
+
+![](images/https-19.png)
